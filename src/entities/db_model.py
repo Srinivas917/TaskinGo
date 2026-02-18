@@ -5,7 +5,7 @@ from sqlalchemy.orm import declarative_base, relationship, sessionmaker
 from src.constants.properties import DATABASE_URL
 from src.utils.logging_utils import get_logger
 
-logger = get_logger(__name__)
+logger = get_logger(__name__, __file__, logging_level="DEBUG")
 
 engine = create_engine(DATABASE_URL, echo=False, pool_pre_ping=True)
 SessionLocal = sessionmaker(bind=engine)
@@ -18,7 +18,7 @@ class BaseModel(Base):
 class User(Base):
     __tablename__ = "users"
 
-    id = Column(Integer, primary_key=True, index=True)
+    id = Column(Integer, primary_key=True, autoincrement=True, index=True)
     username = Column(String(100), nullable=False)
     email = Column(String(150), unique=True, nullable=False)
     password_hash = Column(String(255), nullable=False)
@@ -32,7 +32,7 @@ class User(Base):
 class Goal(Base):
     __tablename__ = "goals"
 
-    id = Column(Integer, primary_key=True, index=True)
+    id = Column(Integer, primary_key=True, autoincrement=True, index=True)
     title = Column(String(200), nullable=False)
     description = Column(String(500))
     user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
@@ -47,7 +47,7 @@ class Goal(Base):
 class Task(Base):
     __tablename__ = "tasks"
 
-    id = Column(Integer, primary_key=True, index=True)
+    id = Column(Integer, primary_key=True, autoincrement=True, index=True)
     title = Column(String(200), nullable=False)
     is_completed = Column(Boolean, default=False)
     goal_id = Column(Integer, ForeignKey("goals.id"), nullable=False)

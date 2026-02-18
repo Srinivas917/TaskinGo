@@ -35,7 +35,6 @@ async def register(request: RegisterRequest):
             raise HTTPException(status_code=400, detail="Email already exists")
 
         user = User(
-            id=str(uuid.uuid4()),
             username=request.username,
             email=request.email,
             password_hash=hash_password(request.password)

@@ -1,37 +1,64 @@
 import logging
-import os
+from pathlib import Path
 
-LOG_DIR = "logs"
 
-def get_logger(module_name: str) -> logging.Logger:
-    # Create logs folder if not exists
-    if not os.path.exists(LOG_DIR):
-        os.makedirs(LOG_DIR)
+class ColorFormatter(logging.Formatter):
+    """Custom logging formatter that adds color codes based on log type."""
+    COLORS = {
+        logging.DEBUG: "\033[94m",  # Blue
+        logging.INFO: "\033[92m",  # Green
+        logging.WARNING: "\033[93m",  # Yellow
+        logging.ERROR: "\033[91m",  # Red
+        logging.CRITICAL: "\033[95m"  # Magenta
+    }
+    RESET = "\033[0m"
 
-    # Extract filename from module path
-    file_name = module_name.split(".")[-1]
-    log_file_path = os.path.join(LOG_DIR, f"{file_name}.log")
+    def format(self, record):
+        """
+        Format log record with different colors based on log type.
 
-    logger = logging.getLogger(module_name)
-    logger.setLevel(logging.INFO)
+        Args:
+            record: LogRecord instance containing log event details
 
-    # Prevent duplicate handlers
+        Returns:
+            Formatted log message string wrapped with ANSI color codes
+        """
+        log_color = self.COLORS.get(record.levelno, self.RESET)
+        message = super().format(record)
+        return f"{log_color}{message}{self.RESET}"
+
+
+def get_logger(name: str, file: str, logging_level="INFO") -> logging.Logger:
+    """
+    Create a logger that logs to a file named after the script file.
+    
+    Args:
+        name (str): usually __name__
+        file (str): usually __file__
+        debug_level (int): logging.DEBUG, logging.INFO, etc.
+    
+    Returns:
+        Configured logging.Logger instance with File handler and Stream handler
+    """
+    log_dir = Path("logs")
+    log_dir.mkdir(exist_ok=True)
+
+    file_name = Path(file).stem  # get script file name without extension
+    log_file = log_dir / f"{file_name}.log"
+
+    logger = logging.getLogger(name)
+    logger.setLevel(getattr(logging, logging_level.upper(), logging.INFO))
+
     if not logger.handlers:
-        file_handler = logging.FileHandler(log_file_path)
-        formatter = logging.Formatter(
-            "%(asctime)s | %(levelname)s | %(name)s | %(message)s"
-        )
-        file_handler.setFormatter(formatter)
-        
-        combined_handler = logging.FileHandler(os.path.join(LOG_DIR, "news_agent.log"))
-        combined_handler.setFormatter(formatter)
+        formatter = ColorFormatter("%(asctime)s | %(levelname)s | %(message)s")
+        file_formatter = logging.Formatter("%(asctime)s | %(levelname)s | %(message)s")
+        file_handler = logging.FileHandler(log_file, encoding="utf-8")
+        file_handler.setFormatter(file_formatter)
+
         stream_handler = logging.StreamHandler()
         stream_handler.setFormatter(formatter)
 
-        logger.addHandler(combined_handler)
         logger.addHandler(file_handler)
         logger.addHandler(stream_handler)
-        
-        logger.propagate = False
 
     return logger
