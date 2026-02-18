@@ -1,0 +1,13 @@
+.env 
+
+database.db
+__pycache__/
+venv/
+
+
+src/constants/__pycache__/
+src/entities/__pycache__/
+src/services/__pycache__/
+qdrant_storage/
+
+logs/
