@@ -31,8 +31,13 @@ async def check_cookie(request: Request):
 async def register(request: RegisterRequest):
     db: Session = SessionLocal()
     try:
-        if db.query(User).filter(User.email == request.username).first():
-            raise HTTPException(status_code=400, detail="Email already exists")
+        user = (
+            db.query(User)
+            .filter(User.username == request.username, User.is_deleted == False)
+            .first()
+        )
+        if user:
+            raise HTTPException(status_code=400, detail="Username already exists")
 
         user = User(
             username=request.username,
@@ -44,7 +49,7 @@ async def register(request: RegisterRequest):
         db.commit()
         db.refresh(user)
 
-        return {"message": "User created successfully"}
+        return {"message": "User created successfully", "user_id": user.id, "username": user.username, "email": user.email}
     except Exception as e:
         db.rollback()
         logger.error(f"Error during registration: {e}", exc_info=True)

@@ -6,7 +6,7 @@ from fastapi import FastAPI, Depends
 from fastapi.middleware.cors import CORSMiddleware
 from langchain_core._api.deprecation import LangChainDeprecationWarning
 
-from src.apis import auth_router
+from src.apis import auth_router, goal_router, task_router, notes_router
 from src.entities.db_model import engine
 from src.utils.db_utils import db_session_middleware, log_connection_pool_status
 from src.utils.logging_utils import get_logger
@@ -66,6 +66,9 @@ async def home():
 
 
 app.include_router(auth_router.router)
+app.include_router(goal_router.router)
+app.include_router(task_router.router)
+app.include_router(notes_router.router)
 
 if __name__ == "__main__":
     uvicorn.run(app)

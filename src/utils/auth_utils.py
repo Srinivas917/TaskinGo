@@ -39,7 +39,7 @@ def verify_password(plain_password: str, hashed_password: str) -> bool:
     Verify plain password against hashed password.
 
     Args:
-        plain_password: User provided plain text password
+        plain_password: User provides plain text password
         hashed_password: Stored hashed password
 
     Returns:
@@ -160,33 +160,5 @@ def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(securit
         return user
     except:
         raise
-    finally:
-        db.close()
-
-
-def create_user(user_creds):
-    """
-    Create new users in database if they do not already exist.
-
-    Args:
-        user_creds: List of dictionaries containing user credentials
-    """
-    db: Session = SessionLocal()
-    try:
-        for user_info in user_creds:
-            user = (
-                db.query(User)
-                .filter(User.username == user_info.get("username"), User.is_deleted == False)
-                .first()
-            )
-            if not user:
-                user = User(
-                    id=str(uuid.uuid4()),
-                    username=user_info.get("username"),
-                    email=user_info.get("email"),
-                    hashed_password=hash_password(user_info.get("password")),
-                )
-                db.add(user)
-        db.commit()
     finally:
         db.close()

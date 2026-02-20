@@ -36,6 +36,7 @@ class Goal(Base):
     title = Column(String(200), nullable=False)
     description = Column(String(500))
     user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
+    priority = Column(String(50))
     created_at = Column(DateTime(timezone=True), default=datetime.datetime.now)
     is_completed = Column(Boolean, default=False)
     is_deleted = Column(Boolean, default=False)
@@ -49,8 +50,11 @@ class Task(Base):
 
     id = Column(Integer, primary_key=True, autoincrement=True, index=True)
     title = Column(String(200), nullable=False)
-    is_completed = Column(Boolean, default=False)
+    description = Column(String(500))
+    priority = Column(String(50))
     goal_id = Column(Integer, ForeignKey("goals.id"), nullable=False)
+    is_deleted = Column(Boolean, default=False)
+    is_completed = Column(Boolean, default=False)
     created_at = Column(DateTime(timezone=True), default=datetime.datetime.now)
     updated_at = Column(DateTime(timezone=True), default=datetime.datetime.now)
 
