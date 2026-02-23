@@ -106,3 +106,5 @@ uvicorn==0.38.0
 xxhash==3.6.0
 yarl==1.22.0
 zstandard==0.25.0
+apscheduler
+streamlit-cookies-manager

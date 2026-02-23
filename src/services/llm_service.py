@@ -1,7 +1,13 @@
 from groq import Groq
 from src.entities.tool_model import TaskPlannerResponse
+from typing import Type
+from pydantic import BaseModel, ValidationError
 import json
-from src.constants.properties import GROQ_API_KEY
+from src.constants.properties import GROQ_API_KEY, LLM_MODEL_NAME
+from src.constants.prompts import GENERATE_OR_ANALYZE_TASKS_PROMPT
+from src.utils.logging_utils import get_logger
+
+logger = get_logger(__name__, __file__, logging_level="DEBUG")
 
 client = Groq(api_key=GROQ_API_KEY)
 
@@ -12,62 +18,73 @@ def generate_or_analyze_tasks(goal_title: str, goal_description: str | None, tas
     goal_description: str | None
     tasks: list[dict] -> [{"title": "...", "description": "..."}]
     """
+    try:
+        if tasks:
+            existing_tasks_text = "\n".join(
+                [
+                    f"{i+1}. {t['title']} - {t.get('description', '')}"
+                    for i, t in enumerate(tasks)
+                ]
+            )
+        else:
+            existing_tasks_text = "No existing tasks."
 
-    if tasks:
-        existing_tasks_text = "\n".join(
-            [
-                f"{i+1}. {t['title']} - {t.get('description', '')}"
-                for i, t in enumerate(tasks)
-            ]
+        prompt = GENERATE_OR_ANALYZE_TASKS_PROMPT.format(
+            goal_title=goal_title,
+            goal_description=goal_description,
+            existing_tasks_text=existing_tasks_text
         )
-    else:
-        existing_tasks_text = "No existing tasks."
+        response = client.chat.completions.create(
+            model=LLM_MODEL_NAME,
+            temperature=0.1,
+            messages=[
+                {"role": "user", "content": prompt},
+            ],
+            response_format={"type": "json_object"},
+        )
 
-    system_prompt = """
-    You are a precision-focused Task Decomposition Engine. Your sole purpose is to determine the logical gap between a Goal and the current state of Existing Tasks.
+        content = response.choices[0].message.content
 
-    **Operational Constraints:**
-    1. ANALYZE: Compare "Goal Title" and "Goal Description" against "Existing Tasks".
-    2. EVALUATE: Determine if the "Existing Tasks" fully satisfy every requirement of the Goal.
-    3. OUTPUT RULES:
-    - If the goal is fully met by existing tasks: set "goal_completed" to true and "tasks" to [].
-    - If the goal is NOT met: set "goal_completed" to false and generate ONLY the missing, logically sequential tasks required to finish the goal.
-    - If "Existing Tasks" is empty: generate a comprehensive, step-by-step task list to achieve the goal from scratch.
-    4. ANTI-HALLUCINATION: Do not invent sub-goals. Do not include tasks already listed in "Existing Tasks". Do not provide conversational filler.
+        # Validate strictly
+        parsed = TaskPlannerResponse.model_validate_json(content)
 
-    **Response Format:**
-    You must return a raw JSON object. No markdown blocks, no explanations.
-    {
-    "goal_completed": boolean,
-    "tasks": ["string", "string"]
-    }
-    """
-    user_prompt = f"""
-    [GOAL DATA]
-    Title: {goal_title}
-    Description: {goal_description}
+        return parsed
+    except Exception as e:
+        logger.error(f"Error generating or analyzing tasks: {e}", exc_info=True)
+        raise e
 
-    [CURRENT STATE]
-    Existing Tasks: 
-    {existing_tasks_text}
 
-    [INSTRUCTION]
-    Analyze the gap and provide the JSON response.
-    """
+def call_llm_with_validation(
+    prompt: str,
+    response_model: Type[BaseModel],
+    max_retries: int = 2
+):
+    try:
+        parsed = None
 
-    response = client.chat.completions.create(
-        model="llama-3.3-70b-versatile",
-        temperature=0.1,
-        messages=[
-            {"role": "system", "content": system_prompt},
-            {"role": "user", "content": user_prompt},
-        ],
-        response_format={"type": "json_object"},
-    )
+        model_name = LLM_MODEL_NAME
+        for attempt in range(max_retries):
+            try:
+                response = client.chat.completions.create(
+                    model=model_name,
+                    temperature=0.1,
+                    messages=[
+                        {"role": "user", "content": prompt},
+                    ],
+                    response_format={"type": "json_object"},
+                )
 
-    content = response.choices[0].message.content
+                content = response.choices[0].message.content
 
-    # Validate strictly
-    parsed = TaskPlannerResponse.model_validate_json(content)
+                parsed = response_model.model_validate_json(content)
 
-    return parsed
+            except ValidationError as e:
+                logger.error(f"Validation error: {e}")
+                raise
+            
+        return parsed
+    except Exception as e:
+        logger.error(f"Error calling LLM with validation: {e}", exc_info=True)
+        raise e
+
+        

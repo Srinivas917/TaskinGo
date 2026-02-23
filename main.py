@@ -3,10 +3,11 @@ from contextlib import asynccontextmanager
 
 import uvicorn
 from fastapi import FastAPI, Depends
-from fastapi.middleware.cors import CORSMiddleware
 from langchain_core._api.deprecation import LangChainDeprecationWarning
+from apscheduler.schedulers.background import BackgroundScheduler
+from src.services.reminder_service import send_daily_goal_reminders
 
-from src.apis import auth_router, goal_router, task_router, notes_router
+from src.apis import auth_router, goal_router, task_router, notes_router, insight_router
 from src.entities.db_model import engine
 from src.utils.db_utils import db_session_middleware, log_connection_pool_status
 from src.utils.logging_utils import get_logger
@@ -14,6 +15,14 @@ from src.utils.logging_utils import get_logger
 warnings.filterwarnings("ignore", category=LangChainDeprecationWarning)
 logger = get_logger(__name__, __file__, logging_level="DEBUG")
 
+scheduler = BackgroundScheduler()
+
+def daily_reminder_job():
+    try:
+        logger.info("Running daily reminder job...")
+        send_daily_goal_reminders()
+    except Exception as e:
+        logger.exception("Daily reminder job failed.")
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -40,6 +49,17 @@ async def lifespan(app: FastAPI):
         logger.info("Database connection established")
         log_connection_pool_status()
         logger.info("Database initialization completed successfully")
+        scheduler.add_job(
+            daily_reminder_job,
+            trigger="cron",
+            hour=11,
+            minute=0,
+            id="daily_goal_reminder",
+            replace_existing=True
+        )
+
+        scheduler.start()
+        logger.info("Scheduler started successfully.")
     except Exception as e:
         logger.error(f"Database initialization failed: {str(e)}")
         raise
@@ -50,6 +70,9 @@ async def lifespan(app: FastAPI):
     # --- Shutdown ---
     logger.info("Shutting down application...")
     try:
+        scheduler.shutdown()
+        logger.info("Scheduler stopped successfully.")
+
         engine.dispose()
         logger.info("Database connections closed successfully")
     except Exception as e:
@@ -67,8 +90,9 @@ async def home():
 
 app.include_router(auth_router.router)
 app.include_router(goal_router.router)
+app.include_router(insight_router.router)
 app.include_router(task_router.router)
 app.include_router(notes_router.router)
 
 if __name__ == "__main__":
-    uvicorn.run(app)
+    uvicorn.run(app, port=9000)

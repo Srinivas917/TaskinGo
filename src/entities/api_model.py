@@ -13,12 +13,16 @@ class LoginRequest(BaseModel):
 class CreateGoalRequest(BaseModel):
     title: str
     description: Optional[str] = None
+    category: Optional[str] = None
+    deadline: Optional[str] = None
     priority: str   
 
 class GoalUpdateRequest(BaseModel):
     id: int
     title: Optional[str] = None
-    description: Optional[str] = None
+    description: Optional[str] = None   
+    category: Optional[str] = None
+    deadline: Optional[str] = None
     priority: Optional[str] = None
 
 class CreateTaskRequest(BaseModel):
@@ -40,10 +44,13 @@ class CreateNoteRequest(BaseModel):
     content: Optional[str] = None
 
 class NoteUpdateRequest(BaseModel):
-    id: int
+    note_id: str
     goal_id: int
     title: Optional[str] = None
     content: Optional[str] = None
 
 class GenerateTasksRequest(BaseModel):
+    goal_id: int
+
+class AnalyzeGoalRequest(BaseModel):
     goal_id: int

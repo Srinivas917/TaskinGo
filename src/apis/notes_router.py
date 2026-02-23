@@ -27,7 +27,7 @@ def create_note(
         # Validate goal ownership from SQL
         goal = (
             db.query(Goal)
-            .filter(Goal.id == request.goal_id, Goal.user_id == current_user.id)
+            .filter(Goal.id == request.goal_id, Goal.user_id == current_user.id, Goal.is_deleted == False)
             .first()
         )
 
@@ -35,10 +35,12 @@ def create_note(
             raise HTTPException(status_code=404, detail="Goal not found")
 
         note_data = {
+            "user_id": current_user.id,
             "title": request.title,
             "content": request.content or "",
             "goal_id": request.goal_id,
-            "created_at": datetime.utcnow()
+            "created_at": datetime.utcnow(),
+            "updated_at": datetime.utcnow(),
         }
 
         result = notes_collection.insert_one(note_data)
@@ -61,7 +63,7 @@ def create_note(
     finally:
         db.close()
 
-@router.get("/get-notes")
+@router.get("/{goal_id}/get-notes")
 def get_notes(
     goal_id: int,
     current_user: User = Depends(get_current_user),
@@ -74,7 +76,7 @@ def get_notes(
     try:
         goal = (
             db.query(Goal)
-            .filter(Goal.id == goal_id, Goal.user_id == current_user.id)
+            .filter(Goal.id == goal_id, Goal.user_id == current_user.id, Goal.is_deleted == False)
             .first()
         )
 
@@ -82,13 +84,17 @@ def get_notes(
             raise HTTPException(status_code=404, detail="Goal not found")
 
         notes_cursor = notes_collection.find(
-            {"goal_id": goal_id}
+            {"goal_id": goal_id, "user_id": current_user.id}
             )
 
         notes = []
         for note in notes_cursor:
-            note["_id"] = str(note["_id"])
-            notes.append(note)
+            notes.append({
+                "_id": str(note["_id"]),
+                "title": note.get("title"),
+                "content": note.get("content"),
+                "created_at": note.get("created_at"),
+            })
 
         return {
             "message": "Notes fetched successfully",
@@ -108,7 +114,7 @@ def get_notes(
     finally:
         db.close()
 
-@router.get("/get-note")
+@router.get("/{goal_id}/{note_id}/get-note")
 def get_note(
     note_id: str,
     goal_id: int,
@@ -124,7 +130,7 @@ def get_note(
             raise HTTPException(status_code=400, detail="Invalid note ID")
         goal = (
             db.query(Goal)
-            .filter(Goal.id == goal_id, Goal.user_id == current_user.id)
+            .filter(Goal.id == goal_id, Goal.user_id == current_user.id, Goal.is_deleted == False)
             .first()
         )
 
@@ -132,17 +138,19 @@ def get_note(
             raise HTTPException(status_code=404, detail="Goal not found")
         note = notes_collection.find_one(
             {"_id": ObjectId(note_id), 
-            "goal_id": goal_id})
+            "goal_id": goal_id, "user_id": current_user.id})
 
         if not note:
             raise HTTPException(status_code=404, detail="Note not found")
 
-        note["_id"] = str(note["_id"])
-
-
         return {
             "message": "Note fetched successfully",
-            "note": note
+            "note": {
+                "_id": str(note["_id"]),
+                "title": note.get("title"),
+                "content": note.get("content"),
+                "created_at": note.get("created_at"),
+            }
         }
 
     except HTTPException:
@@ -174,33 +182,39 @@ def update_note(
 
         goal = (
             db.query(Goal)
-            .filter(Goal.id == request.goal_id, Goal.user_id == current_user.id)
+            .filter(Goal.id == request.goal_id, Goal.user_id == current_user.id, Goal.is_deleted == False)
             .first()
         )
 
         if not goal:
             raise HTTPException(status_code=404, detail="Goal not found")
 
-        # Extract only provided fields
-        update_data = request.model_dump(exclude_unset=True)
+        update_data = {}
 
-        # Remove non-updatable fields
-        update_data.pop("note_id", None)
-        update_data.pop("goal_id", None)
+        if request.title is not None:
+            update_data["title"] = request.title
 
-        # If user sent nothing except IDs → do nothing
-        if not update_data:
-            return {"message": "No changes provided"}
+        if request.content is not None:
+            update_data["content"] = request.content
+
+        update_data["updated_at"] = datetime.utcnow()
 
         result = notes_collection.update_one(
-            {"_id": ObjectId(request.note_id), "goal_id": request.goal_id},
+            {"_id": ObjectId(request.note_id), "goal_id": request.goal_id, "user_id": current_user.id},
             {"$set": update_data}
         )
 
         if result.matched_count == 0:
             raise HTTPException(status_code=404, detail="Note not found")
 
-        return {"message": "Note updated successfully"}
+        return {"status": "success",
+                "data": {
+                    "note_id": str(request.note_id),
+                    "title": update_data.get("title"),
+                    "content": update_data.get("content"),
+                    "updated_at": update_data.get("updated_at"),
+                }
+                }
 
     except HTTPException:
         raise
@@ -215,7 +229,7 @@ def update_note(
     finally:
         db.close()
 
-@router.delete("/delete-note")
+@router.delete("/{goal_id}/{note_id}/delete-note")
 def delete_note(
     note_id: str,
     goal_id: int,
@@ -231,7 +245,7 @@ def delete_note(
             raise HTTPException(status_code=400, detail="Invalid note ID")
         goal = (
             db.query(Goal)
-            .filter(Goal.id == goal_id, Goal.user_id == current_user.id)
+            .filter(Goal.id == goal_id, Goal.user_id == current_user.id, Goal.is_deleted == False)
             .first()
         )
 
@@ -239,12 +253,14 @@ def delete_note(
             raise HTTPException(status_code=404, detail="Goal not found")
         result = notes_collection.delete_one(
             {"_id": ObjectId(note_id), 
-            "goal_id": goal_id})
+            "goal_id": goal_id, "user_id": current_user.id})
 
         if result.deleted_count == 0:
             raise HTTPException(status_code=404, detail="Note not found")
 
-        return {"message": "Note deleted successfully"}
+        return {"status": "success",
+                "note_id": str(note_id)
+                }
 
     except HTTPException:
         raise

@@ -15,9 +15,9 @@ def create_task(request: CreateTaskRequest, current_user: User = Depends(get_cur
     """ Create a task """
     db: Session = SessionLocal()
     try:
-        user = db.query(User).filter(User.id == current_user.id).first()
-        if not user:
-            raise HTTPException(status_code=404, detail="User not found")
+        goal = db.query(Goal).filter(Goal.id == request.goal_id, Goal.user_id == current_user.id, Goal.is_deleted == False).first()
+        if not goal:
+            raise HTTPException(status_code=404, detail="Goal not found")
         if not request.description:
             request.description = ""
         task = Task(
@@ -46,14 +46,14 @@ def create_task(request: CreateTaskRequest, current_user: User = Depends(get_cur
     finally:
         db.close()
 
-@router.get("/get-tasks")
+@router.get("/{goal_id}/get-tasks")
 def get_tasks(goal_id: int, current_user: User = Depends(get_current_user)):
     """ Get all tasks for the current user and goal """
     db: Session = SessionLocal()
     try:
-        user = db.query(User).filter(User.id == current_user.id).first()
-        if not user:
-            raise HTTPException(status_code=404, detail="User not found")
+        goal = db.query(Goal).filter(Goal.id == goal_id, Goal.user_id == current_user.id, Goal.is_deleted == False).first()
+        if not goal:
+            raise HTTPException(status_code=404, detail="Goal not found")
         tasks = db.query(Task).filter(Task.goal_id == goal_id, Task.is_deleted == False).all()
         task_list = []
         for task in tasks:
@@ -81,14 +81,14 @@ def get_tasks(goal_id: int, current_user: User = Depends(get_current_user)):
     finally:
         db.close()
 
-@router.get("/get-task")
+@router.get("/{goal_id}/{task_id}/get-task")
 def get_task(task_id: int, goal_id: int, current_user: User = Depends(get_current_user)):
     """ Get task by task id and goal id """
     db: Session = SessionLocal()
     try:
-        user = db.query(User).filter(User.id == current_user.id).first()
-        if not user:
-            raise HTTPException(status_code=404, detail="User not found")
+        goal = db.query(Goal).filter(Goal.id == goal_id, Goal.user_id == current_user.id, Goal.is_deleted == False).first()
+        if not goal:
+            raise HTTPException(status_code=404, detail="Goal not found")
         task = db.query(Task).filter(Task.id == task_id, Task.goal_id == goal_id, Task.is_deleted == False).first()
         if not task:
             raise HTTPException(status_code=404, detail="Task not found")
@@ -127,9 +127,9 @@ async def process_goal(request: GenerateTasksRequest, current_user: User = Depen
         goal_description = goal.description
         tasks = db.query(Task).filter(Task.goal_id == goal.id, Task.is_deleted == False).all()
 
+        tasks = [{"title": task.title, "description": task.description} for task in tasks]
         if not tasks:
             tasks = []
-        tasks = [{"title": task.title, "description": task.description} for task in tasks]
 
         llm_response = generate_or_analyze_tasks(
             goal_title,
@@ -168,9 +168,9 @@ def update_task(request: TaskUpdateRequest, current_user: User = Depends(get_cur
     """ Update a task by task id """
     db: Session = SessionLocal()
     try:
-        user = db.query(User).filter(User.id == current_user.id).first()
-        if not user:
-            raise HTTPException(status_code=404, detail="User not found")
+        goal = db.query(Goal).filter(Goal.id == request.goal_id, Goal.user_id == current_user.id, Goal.is_deleted == False).first()
+        if not goal:
+            raise HTTPException(status_code=404, detail="Goal not found")
         task = db.query(Task).filter(Task.id == request.id,Task.goal_id == request.goal_id, Task.is_deleted == False).first()
         if not task:
             raise HTTPException(status_code=404, detail="Task not found")
@@ -197,14 +197,14 @@ def update_task(request: TaskUpdateRequest, current_user: User = Depends(get_cur
     finally:
         db.close()
 
-@router.delete("/delete-task")
+@router.delete("/{goal_id}/{task_id}/delete-task")
 def delete_task(task_id: int, goal_id: int, current_user: User = Depends(get_current_user)):
     """ Delete a task by task id """
     db: Session = SessionLocal()
     try:
-        user = db.query(User).filter(User.id == current_user.id).first()
-        if not user:
-            raise HTTPException(status_code=404, detail="User not found")
+        goal = db.query(Goal).filter(Goal.id == goal_id, Goal.user_id == current_user.id, Goal.is_deleted == False).first()
+        if not goal:
+            raise HTTPException(status_code=404, detail="Goal not found")
         task = db.query(Task).filter(Task.id == task_id,Task.goal_id == goal_id, Task.is_deleted == False).first()
         if not task:
             raise HTTPException(status_code=404, detail="Task not found")
@@ -226,14 +226,14 @@ def delete_task(task_id: int, goal_id: int, current_user: User = Depends(get_cur
     finally:
         db.close()
 
-@router.put("/complete-task")
+@router.patch("/{goal_id}/{task_id}/complete-task")
 def complete_task(task_id: int, goal_id: int, current_user: User = Depends(get_current_user)):
     """ Complete a task by task id """
-    db: Session = SessionLocal()
+    db: Session = SessionLocal()    
     try:
-        user = db.query(User).filter(User.id == current_user.id).first()
-        if not user:
-            raise HTTPException(status_code=404, detail="User not found")
+        goal = db.query(Goal).filter(Goal.id == goal_id, Goal.user_id == current_user.id, Goal.is_deleted == False).first()
+        if not goal:
+            raise HTTPException(status_code=404, detail="Goal not found")
         task = db.query(Task).filter(Task.id == task_id,Task.goal_id == goal_id, Task.is_deleted == False).first()
         if not task:
             raise HTTPException(status_code=404, detail="Task not found")
@@ -255,14 +255,14 @@ def complete_task(task_id: int, goal_id: int, current_user: User = Depends(get_c
     finally:
         db.close()
 
-@router.put("/uncomplete-task")
+@router.patch("/{goal_id}/{task_id}/uncomplete-task")
 def uncomplete_task(task_id: int, goal_id: int, current_user: User = Depends(get_current_user)):
     """ Uncomplete a task by task id """
     db: Session = SessionLocal()
     try:
-        user = db.query(User).filter(User.id == current_user.id).first()
-        if not user:
-            raise HTTPException(status_code=404, detail="User not found")
+        goal = db.query(Goal).filter(Goal.id == goal_id, Goal.user_id == current_user.id, Goal.is_deleted == False).first()
+        if not goal:
+            raise HTTPException(status_code=404, detail="Goal not found")
         task = db.query(Task).filter(Task.id == task_id,Task.goal_id == goal_id, Task.is_deleted == False).first()
         if not task:
             raise HTTPException(status_code=404, detail="Task not found")
