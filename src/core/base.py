@@ -18,7 +18,7 @@ class GoalState(MessagesState):
     suggested_tasks: List[Dict]
 
     completion_score: int
-    risk_score: int
+    priority: str
     days_remaining: Optional[int]
 
     execution_strategy: str

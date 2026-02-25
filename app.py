@@ -1,5 +1,6 @@
 import streamlit as st
 from streamlit_cookies_manager import EncryptedCookieManager
+import html
 import requests
 from src.constants.properties import COOKIE_SECRET_KEY
 
@@ -17,7 +18,28 @@ if not cookies.ready():
 
 # ---------------- SESSION ----------------
 if "access_token" not in st.session_state:
-    st.session_state.access_token = cookies.get("access_token")
+    token = cookies.get("access_token")
+
+    if token:
+        # Verify token by calling profile endpoint
+        try:
+            res = requests.get(
+                f"{BASE_URL}/auth/user-profile",
+                headers={"Authorization": f"Bearer {token}"}
+            )
+
+            if res.status_code == 200:
+                st.session_state.access_token = token
+            else:
+                st.session_state.access_token = None
+                cookies["access_token"] = ""
+                cookies.save()
+
+        except:
+            st.session_state.access_token = None
+    else:
+        st.session_state.access_token = None
+
 if "selected_goal" not in st.session_state:
     st.session_state.selected_goal = None
 if "insight_data" not in st.session_state:
@@ -30,18 +52,45 @@ def headers():
 
 # ---------------- AUTH ----------------
 def auth_page():
+
+    # Reduce top spacing
+    st.markdown(
+    """
+    <style>
+        /* Control overall container spacing */
+        .block-container {
+            padding-top: 2rem;
+            padding-bottom: 2rem;
+            max-width: 500px;
+        }
+
+        /* Reduce space below main title */
+        h1 {
+            margin-bottom: 0.4rem !important;
+        }
+
+        /* Reduce space around horizontal line */
+        hr {
+            margin-top: 0.2rem !important;
+            margin-bottom: 1rem !important;
+        }
+    </style>
+    """,
+    unsafe_allow_html=True
+)
+
     st.title("TaskinGo AI")
+    st.markdown("---")
 
     tab1, tab2 = st.tabs(["Login", "Register"])
 
     # ---------------- LOGIN ----------------
     with tab1:
-        st.subheader("Login to your account")
 
         login_username = st.text_input("Username", key="login_username")
         login_password = st.text_input("Password", type="password", key="login_password")
 
-        if st.button("Login", key="login_btn"):
+        if st.button("Login", use_container_width=True):
             if not login_username or not login_password:
                 st.warning("Please enter both username and password.")
                 return
@@ -66,13 +115,12 @@ def auth_page():
 
     # ---------------- REGISTER ----------------
     with tab2:
-        st.subheader("Create a new account")
 
         reg_username = st.text_input("Username", key="reg_username")
         reg_email = st.text_input("Email", key="reg_email")
         reg_password = st.text_input("Password", type="password", key="reg_password")
 
-        if st.button("Register", key="register_btn"):
+        if st.button("Register", use_container_width=True):
             if not reg_username or not reg_email or not reg_password:
                 st.warning("All fields are required.")
                 return
@@ -89,9 +137,20 @@ def auth_page():
 
             if res.status_code == 200:
                 st.success("Account created successfully. You can now login.")
-
             else:
                 st.error(res.json().get("detail", "Registration failed"))
+
+def fetch_user_profile():
+    try:
+        res = requests.get(
+            f"{BASE_URL}/auth/user-profile",
+            headers=headers(),
+        )
+        if res.status_code == 200:
+            return res.json()
+        return None
+    except:
+        return None
 
 def create_goal_section():
     st.header("Create New Goal")
@@ -132,6 +191,13 @@ def create_goal_section():
             st.error("Failed to create goal")
 # ---------------- SIDEBAR ----------------
 def sidebar():
+    profile = fetch_user_profile()
+
+    if profile:
+        if st.sidebar.button(f"Hi {profile['username']}", use_container_width=True):
+            st.session_state.open_profile_dialog = True
+
+    st.sidebar.markdown("---")
 
     st.sidebar.title("Your Goals")
     if st.sidebar.button("Create New Goal"):
@@ -172,8 +238,6 @@ def sidebar():
         # ---------------- ACTION MENU ----------------
         if st.session_state.goal_menu_open == goal_id:
 
-            st.sidebar.markdown("—")
-
             # COMPLETE
             if st.sidebar.button("Complete", key=f"goal_complete_{goal_id}"):
                 requests.patch(
@@ -185,7 +249,7 @@ def sidebar():
                 st.rerun()
 
             # UNCOMPLETE
-            if st.sidebar.button("Uncomplete", key=f"goal_uncomplete_{goal_id}"):
+            if st.sidebar.button("Incomplete", key=f"goal_Incomplete_{goal_id}"):
                 requests.patch(
                     f"{BASE_URL}/goal/{goal_id}/uncomplete-goal",
                     headers=headers(),
@@ -196,7 +260,8 @@ def sidebar():
 
             # EDIT
             if st.sidebar.button("Update", key=f"goal_edit_{goal_id}"):
-                st.session_state.editing_goal = goal
+                st.session_state.goal_to_edit = goal
+                st.session_state.open_goal_dialog = True
                 st.session_state.goal_menu_open = None
                 st.rerun()
 
@@ -210,19 +275,57 @@ def sidebar():
                 st.session_state.goal_menu_open = None
                 st.rerun()
 
-
-    st.sidebar.markdown("---")
-
     if st.sidebar.button("Logout"):
         cookies["access_token"] = ""
         cookies.save()
-        st.session_state.clear()
+
+        st.session_state.access_token = None
+        st.session_state.selected_goal = None
+        st.session_state.insight_data = None
+
         st.rerun()
 
-    # ---------------- UPDATE GOAL DIALOG ----------------
-    if st.session_state.editing_goal:
+    # ---------------- PROFILE DIALOG ----------------
+    if st.session_state.get("open_profile_dialog", False):
 
-        goal = st.session_state.editing_goal
+        # Reset trigger immediately to prevent reopen
+        st.session_state.open_profile_dialog = False
+
+        @st.dialog("User Profile", width="medium")
+        def profile_dialog():
+
+            st.markdown("### Account Information")
+            st.markdown("---")
+
+            st.write("**User ID:**", profile["user_id"])
+            st.write("**Username:**", profile["username"])
+            st.write("**Email:**", profile["email"])
+
+            st.markdown("---")
+            st.markdown("### Goals Overview")
+
+            st.write("**Total Goals:**", profile["total_goals"])
+            st.write("**Completed Goals:**", profile["completed_goals"])
+            st.write("**Pending Goals:**", profile["pending_goals"])
+
+            st.markdown("---")
+            st.markdown("### Tasks Overview")
+
+            st.write("**Completed Tasks:**", profile["completed_tasks"])
+            st.write("**Pending Tasks:**", profile["pending_tasks"])
+
+            if st.button("Close", use_container_width=True):
+                st.rerun()
+
+        profile_dialog()
+
+    # ---------------- UPDATE GOAL DIALOG ----------------
+    if st.session_state.get("open_goal_dialog", False):
+
+        goal = st.session_state.get("goal_to_edit")
+
+        # reset flag immediately
+        st.session_state.open_goal_dialog = False
 
         @st.dialog("Update Goal", width="medium")
         def edit_goal_dialog():
@@ -262,7 +365,11 @@ def sidebar():
                 else:
                     st.error("Update failed")
 
-                st.session_state.editing_goal = None
+                st.session_state.goal_to_edit = None
+                st.rerun()
+
+            if col2.button("Cancel", use_container_width=True):
+                st.session_state.goal_to_edit = None
                 st.rerun()
 
         edit_goal_dialog()
@@ -286,67 +393,87 @@ def tasks_section(goal_id):
 
             if res.status_code == 200:
                 st.session_state.generated_tasks = res.json()
+                st.session_state.open_ai_task_dialog = True
+                st.rerun()
             else:
                 st.error("Failed to generate tasks")
 
-    # ---------------- AI SUGGESTED TASKS DISPLAY ----------------
-    if "generated_tasks" in st.session_state and st.session_state.generated_tasks:
+    # ---------------- AI TASK DIALOG ----------------
+    if st.session_state.get("open_ai_task_dialog", False):
 
-        gen = st.session_state.generated_tasks
+        ai_data = st.session_state.get("generated_tasks", {})
 
-        st.markdown("---")
-        st.subheader("AI Suggested Tasks")
+        # Reset trigger immediately
+        st.session_state.open_ai_task_dialog = False
 
-        st.info(gen.get("message", ""))
+        @st.dialog("AI Suggested Tasks", width="medium")
+        def ai_task_dialog():
 
-        tasks_list = gen.get("tasks", [])
+            st.markdown("### AI Analysis")
+            st.info(ai_data.get("message", ""))
 
-        if tasks_list:
+            tasks_list = ai_data.get("tasks", [])
+
+            if not tasks_list:
+                st.success("Goal Achieved. No additional tasks required.")
+                if st.button("Close", use_container_width=True):
+                    st.session_state.generated_tasks = None
+                    st.rerun()
+                return
+
+            st.markdown("---")
+            st.markdown("### Select Tasks to Add")
+
             selected_tasks = []
 
             for i, task in enumerate(tasks_list):
-                with st.container():
-                    st.markdown(
-                        f"""
-                        <div style="
-                            padding:15px;
-                            border-radius:10px;
-                            background-color:#1f2937;
-                            margin-bottom:10px;
-                            border:1px solid #374151;
-                        ">
-                            <b>Task {i+1}</b><br>
-                            {task}
-                        </div>
-                        """,
-                        unsafe_allow_html=True
+
+                st.markdown(
+                    f"""
+                    <div style="
+                        padding:12px;
+                        border-radius:8px;
+                        background-color:#1f2937;
+                        margin-bottom:8px;
+                        border:1px solid #374151;
+                    ">
+                        <b>Task {i+1}</b><br>
+                        {task}
+                    </div>
+                    """,
+                    unsafe_allow_html=True
+                )
+
+                if st.checkbox("Select", key=f"ai_select_{i}"):
+                    selected_tasks.append(task)
+
+            st.markdown("---")
+
+            col_add, col_cancel = st.columns(2)
+
+            if col_add.button("Add Selected Tasks", use_container_width=True):
+
+                for task in selected_tasks:
+                    requests.post(
+                        f"{BASE_URL}/task/create-task",
+                        json={
+                            "goal_id": goal_id,
+                            "title": task,
+                            "description": "",
+                            "priority": "Medium",
+                        },
+                        headers=headers(),
                     )
 
-                    if st.checkbox("Select", key=f"select_ai_{i}"):
-                        selected_tasks.append(task)
+                st.success("Tasks added successfully!")
+                st.session_state.generated_tasks = None
+                st.rerun()
 
-            if selected_tasks:
-                if st.button("Add Selected Tasks to Goal"):
-                    for task in selected_tasks:
-                        requests.post(
-                            f"{BASE_URL}/task/create-task",
-                            json={
-                                "goal_id": goal_id,
-                                "title": task,
-                                "description": "",
-                                "priority": "Medium",
-                            },
-                            headers=headers(),
-                        )
+            if col_cancel.button("Cancel", use_container_width=True):
+                st.session_state.generated_tasks = None
+                st.rerun()
 
-                    st.success("Selected tasks added successfully!")
-                    st.session_state.generated_tasks = None
-                    st.rerun()
-
-        else:
-            st.success("Goal Achieved. No additional tasks required.")
-
-        st.markdown("---")
+        ai_task_dialog()
 
     # ---------------- EXISTING TASKS ----------------
     st.subheader("Your Current Tasks")
@@ -361,43 +488,52 @@ def tasks_section(goal_id):
     for task in tasks:
         task_id = task["task_id"]
 
-        with st.expander(task["title"]):
+        is_completed = task.get("is_completed", False)
 
-            st.write("**Description:**", task.get("description", "N/A"))
-            st.write("**Priority:**", task.get("priority", "N/A"))
+        # ---------- HEADER ROW ----------
+        col1, col2 = st.columns([8, 1])  # Expander wide, checkbox small
 
-            action_col1, action_col2, action_col3, action_col4 = st.columns(4)
+        with col1:
+            expander = st.expander(task["title"])
 
-            # COMPLETE
-            if action_col1.button("Complete", key=f"complete_{task_id}"):
+        with col2:
+            checkbox_value = st.checkbox(
+                label=f"Mark task {task_id} as complete",
+                key=f"task_checkbox_{task_id}",
+                value=is_completed,
+                label_visibility="collapsed"
+            )
+
+        # ---------- HANDLE CHECKBOX ----------
+        if checkbox_value != is_completed:
+            if checkbox_value:
                 requests.patch(
                     f"{BASE_URL}/task/{goal_id}/{task_id}/complete-task",
                     headers=headers(),
                 )
-                st.success("Task marked complete")
-                st.rerun()
-
-            # UNCOMPLETE
-            if action_col2.button("Uncomplete", key=f"uncomplete_{task_id}"):
+            else:
                 requests.patch(
                     f"{BASE_URL}/task/{goal_id}/{task_id}/uncomplete-task",
                     headers=headers(),
                 )
-                st.success("Task marked incomplete")
-                st.rerun()
+            st.rerun()
 
-            # DELETE
-            if action_col3.button("Delete", key=f"delete_{task_id}"):
+        # ---------- EXPANDER CONTENT ----------
+        with expander:
+            st.write("**Description:**", task.get("description", "N/A"))
+            st.write("**Priority:**", task.get("priority", "N/A"))
+
+            col_edit, col_delete = st.columns(2)
+
+            if col_edit.button("Edit", key=f"edit_toggle_{task_id}", use_container_width=True):
+                st.session_state[f"editing_{task_id}"] = True
+
+            if col_delete.button("Delete", key=f"delete_{task_id}", use_container_width=True):
                 requests.delete(
                     f"{BASE_URL}/task/{goal_id}/{task_id}/delete-task",
                     headers=headers(),
                 )
-                st.success("Task deleted successfully")
                 st.rerun()
-
-            # EDIT TOGGLE
-            if action_col4.button("Edit", key=f"edit_toggle_{task_id}"):
-                st.session_state[f"editing_{task_id}"] = True
 
             # ---------------- EDIT FORM ----------------
             if st.session_state.get(f"editing_{task_id}"):
@@ -446,43 +582,85 @@ def tasks_section(goal_id):
                     st.session_state[f"editing_{task_id}"] = False
                     st.rerun()
 
+    total_tasks = len(tasks)
+    completed_tasks = sum(1 for t in tasks if t.get("is_completed", False))
+
+    if total_tasks > 0:
+        st.markdown("### Goal Progress")
+
+        progress_ratio = completed_tasks / total_tasks
+        progress_percent = int(progress_ratio * 100)
+
+        # Styled progress bar
+        st.markdown(
+            f"""
+            <div style="
+                background-color:#1f2937;
+                border-radius:12px;
+                height:22px;
+                width:100%;
+                overflow:hidden;
+                margin-top:10px;
+                border:1px solid #374151;
+            ">
+                <div style="
+                    width:{progress_percent}%;
+                    background-color:#22c55e;
+                    height:100%;
+                    transition: width 0.3s ease-in-out;
+                "></div>
+            </div>
+            <div style="
+                text-align:right;
+                margin-top:6px;
+                font-weight:500;
+            ">
+                {completed_tasks} / {total_tasks} Completed
+            </div>
+            """,
+            unsafe_allow_html=True
+        )
+
+    else:
+        st.info("No tasks yet. Add tasks to start tracking progress.")
+
     st.markdown("---")
 
     # ---------------- CREATE TASK FLOAT BUTTON ----------------
 
-    if "show_task_form" not in st.session_state:
-        st.session_state.show_task_form = False
-
-    # Right aligned button
     col_left, col_right = st.columns([5, 1])
 
     with col_right:
         if st.button("New Task", use_container_width=True):
-            st.session_state.show_task_form = not st.session_state.show_task_form
+            st.session_state.open_task_dialog = True
+
 
 
     # ---------------- TASK CREATION FORM ----------------
-    if st.session_state.show_task_form:
+    if "open_task_dialog" in st.session_state and st.session_state.open_task_dialog:
 
-        st.markdown("---")
-        st.subheader("Create New Task")
+        st.session_state.open_task_dialog = False
 
-        new_title = st.text_input("Task Title", key="new_task_title")
-        new_desc = st.text_area("Task Description", key="new_task_desc")
-        new_priority = st.selectbox(
-            "Priority",
-            ["High", "Medium", "Low"],
-            key="new_task_priority"
-        )
+        @st.dialog("Create New Task", width="medium")
+        def create_task_dialog():
 
-        col_save, col_cancel = st.columns(2)
+            new_title = st.text_input("Task Title")
+            new_desc = st.text_area("Task Description")
+            new_priority = st.selectbox(
+                "Priority",
+                ["High", "Medium", "Low"]
+            )
 
-        if col_save.button("Create Task", use_container_width=True):
-            if not new_title:
-                st.warning("Task title is required.")
-            else:
-                requests.post(
-                    f"{BASE_URL}/task/{goal_id}/create-task",
+            col_save, col_cancel = st.columns(2)
+
+            if col_save.button("Create Task", use_container_width=True):
+
+                if not new_title.strip():
+                    st.warning("Task title is required.")
+                    return
+
+                res = requests.post(
+                    f"{BASE_URL}/task/create-task",
                     json={
                         "goal_id": goal_id,
                         "title": new_title,
@@ -491,34 +669,115 @@ def tasks_section(goal_id):
                     },
                     headers=headers(),
                 )
-                st.success("Task created successfully!")
-                st.session_state.show_task_form = False
+
+                if res.status_code == 200:
+                    st.success("Task created successfully!")
+                    st.rerun()
+
+                else:
+                    st.error("Failed to create task")
+
+
+            if col_cancel.button("Cancel", use_container_width=True):
+                st.session_state.open_task_dialog = False
                 st.rerun()
 
-        if col_cancel.button("Cancel", use_container_width=True):
-            st.session_state.show_task_form = False
-            st.rerun()
-
+        create_task_dialog()
 
 # ---------------- INSIGHTS ----------------
 def insight_section(goal_id):
     st.header("AI Insights")
+    st.markdown("""
+            <style>
+            /* Metric label (heading) */
+            [data-testid="stMetricLabel"] {
+                font-size: 18px !important;
+                font-weight: 600 !important;
+            }
+
+            /* Metric value */
+            [data-testid="stMetricValue"] {
+                font-size: 28px !important;
+            }
+            </style>
+            """, unsafe_allow_html=True)
 
     if st.button("Generate Insights", use_container_width=True):
-        res = requests.post(
-            f"{BASE_URL}/insight/analyze-goal",
-            json={"goal_id": goal_id},
-            headers=headers(),
-        )
-        if res.status_code == 200:
-            st.session_state.insight_data = res.json()
+        with st.spinner("Analyzing goal performance..."):
+            res = requests.post(
+                f"{BASE_URL}/insight/analyze-goal",
+                json={"goal_id": goal_id},
+                headers=headers(),
+            )
+            if res.status_code == 200:
+                st.session_state.insight_data = res.json()
 
     if "insight_data" in st.session_state and st.session_state.insight_data:
 
         insight = st.session_state.insight_data
-        st.write("RESPONSE:", insight)
 
+        st.markdown("---")
 
+        # ---------------- SCORE CARDS ----------------
+        col1, col2, col3 = st.columns(3)
+
+        with col1:
+            st.metric("Completion Score", f"{insight['completion_score']}%")
+
+        with col2:
+            st.metric("Priority", insight["priority"])
+
+        with col3:
+            days = insight.get("days_remaining")
+            st.metric("Days Remaining", days if days else "No Deadline")
+
+        # ---------------- STRATEGY ----------------
+        st.subheader("Execution Strategy")
+
+        st.info(insight["strategy_plan"]["execution_strategy"])
+
+        # ---------------- INSIGHTS ----------------
+        st.subheader("Performance Insights")
+
+        insights_data = insight.get("insights", {})
+
+        st.success(insights_data.get("appreciation", ""))
+
+        st.warning(insights_data.get("focus_area", ""))
+
+        tips = insights_data.get("improvement_tip", [])
+        if tips:
+            st.markdown("### Improvement Tips")
+            for tip in tips:
+                st.markdown(f"- {tip}")
+
+        suggestions = insights_data.get("task_suggestions", [])
+        if suggestions:
+            st.markdown("### AI Suggested New Tasks")
+            for suggestion in suggestions:
+                st.markdown(f"• {suggestion}")
+
+        # ---------------- IRRELEVANT TASKS ----------------
+        irrelevant = insight.get("irrelevant_tasks", [])
+
+        if irrelevant:
+            st.subheader("Irrelevant Tasks Detected")
+
+            for task in irrelevant:
+                with st.expander(task["title"]):
+                    st.write("Reason:", task["reason"])
+
+        # ---------------- OBSERVATIONS ----------------
+        obs = insight.get("observations", {})
+
+        st.subheader("Overall Observations")
+
+        st.markdown(f"**Progress Status:** {obs.get('progress_status')}")
+        st.markdown(f"**Risk Level:** {obs.get('risk_level')}")
+        st.markdown(f"**Task Alignment:** {obs.get('task_alignment')}")
+        st.markdown(f"**Deadline Status:** {obs.get('deadline_status')}")
+
+    st.markdown("---")
 # ---------------- NOTES ----------------
 
 def notes_section(goal_id):
@@ -533,79 +792,74 @@ def notes_section(goal_id):
     notes = res.json().get("notes", []) if res.status_code == 200 else []
 
     # ---------------- NOTE LIST ----------------
-    for note in notes:
+    if notes:
 
-        if st.button(note["title"], key=f"note_btn_{note['_id']}"):
+        # 3 cards per row
+        cols = st.columns(3)
 
-            @st.dialog("Note", width="medium")
-            def view_note_dialog():
+        for index, note in enumerate(notes):
 
-                with st.container():
-                    st.markdown(f"### {note['title']}")
-                    st.markdown("---")
+            with cols[index % 3]:
 
-                    st.markdown(
-                        f"""
-                        <div style="
-                            font-size:15px;
-                            line-height:1.6;
-                            padding:10px 0px;
-                            color:#E5E7EB;
-                        ">
-                            {note.get("content", "")}
+                st.markdown(
+                    f"""
+                    <div style="
+                        background-color:#1f2937;
+                        padding:18px;
+                        border-radius:12px;
+                        border:1px solid #374151;
+                        margin-bottom:15px;
+                        cursor:pointer;
+                        transition:0.2s ease-in-out;
+                    ">
+                        <div style="font-size:16px;font-weight:600;">
+                            {note['title']}
                         </div>
-                        """,
-                        unsafe_allow_html=True
-                    )
+                    </div>
+                    """,
+                    unsafe_allow_html=True
+                )
 
-                    st.markdown("---")
+                if st.button("Open", key=f"note_open_{note['_id']}", use_container_width=True):
+                    st.session_state.editing_note = note
+                    st.rerun()
 
-                    col1, col2 = st.columns([1,1])
-
-                    # EDIT
-                    if col1.button("Edit", key=f"edit_btn_{note['_id']}", use_container_width=True):
-                        st.session_state.editing_note = note
-                        st.rerun()
-
-                    # DELETE
-                    if col2.button("Delete", key=f"delete_btn_{note['_id']}", use_container_width=True):
-                        requests.delete(
-                            f"{BASE_URL}/notes/{goal_id}/{note['_id']}/delete-note",
-                            headers=headers(),
-                        )
-                        st.success("Note deleted successfully!")
-                        st.rerun()
-
-
-            view_note_dialog()
+    else:
+        st.info("No notes yet. Create your first note")
 
     st.markdown("---")
 
     # ---------------- NEW NOTE TOGGLE ----------------
-    if "show_note_form" not in st.session_state:
-        st.session_state.show_note_form = False
-
     col_left, col_right = st.columns([5, 1])
 
     with col_right:
         if st.button("New Note", use_container_width=True):
-            st.session_state.show_note_form = not st.session_state.show_note_form
+            st.session_state.open_note_dialog = True
 
-    # ---------------- CREATE NOTE FORM ----------------
-    if st.session_state.show_note_form:
+    # ---------------- CREATE NOTE DIALOG ----------------
+    if st.session_state.get("open_note_dialog", False):
 
-        st.subheader("Create New Note")
+        # Reset trigger immediately (prevents reopen)
+        st.session_state.open_note_dialog = False
 
-        new_title = st.text_input("Note Title", key="new_note_title")
-        new_content = st.text_area("Write your thoughts here...", key="new_note_content")
+        @st.dialog("Create New Note", width="medium")
+        def create_note_dialog():
 
-        col1, col2 = st.columns(2)
+            new_title = st.text_input("Note Title")
+            new_content = st.text_area(
+                "Write your thoughts here...",
+                height=250
+            )
 
-        if col1.button("Save Note", use_container_width=True):
-            if not new_title.strip():
-                st.warning("Title is required")
-            else:
-                requests.post(
+            col1, col2 = st.columns(2)
+
+            if col1.button("Save Note", use_container_width=True):
+
+                if not new_title.strip():
+                    st.warning("Title is required")
+                    return
+
+                res = requests.post(
                     f"{BASE_URL}/notes/create-note",
                     json={
                         "goal_id": goal_id,
@@ -614,20 +868,26 @@ def notes_section(goal_id):
                     },
                     headers=headers(),
                 )
-                st.session_state.show_note_form = False
-                st.success("Note created successfully!")
+
+                if res.status_code == 200:
+                    st.success("Note created successfully!")
+                    st.rerun()
+                else:
+                    st.error("Failed to create note")
+
+            if col2.button("Cancel", use_container_width=True):
                 st.rerun()
 
-        if col2.button("Cancel", use_container_width=True):
-            st.session_state.show_note_form = False
-            st.rerun()
+        create_note_dialog()
 
     # ---------------- EDIT NOTE DIALOG ----------------
     if "editing_note" in st.session_state and st.session_state.editing_note:
 
         note = st.session_state.editing_note
+        original_content = note.get("content", "")
+        fixed_content = original_content.replace("\\n", "\n")
 
-        @st.dialog("Edit Note", width="large")
+        @st.dialog("Edit Note", width="medium")
         def edit_note_dialog():
 
             st.markdown("##Edit Note")
@@ -641,7 +901,7 @@ def notes_section(goal_id):
 
             updated_content = st.text_area(
                 "Content",
-                value=note.get("content", ""),
+                value=fixed_content,
                 key=f"edit_content_{note['_id']}",
                 height=300
             )
@@ -669,8 +929,12 @@ def notes_section(goal_id):
                 st.session_state.editing_note = None
                 st.rerun()
 
-            if col2.button("Cancel", use_container_width=True):
-                st.session_state.editing_note = None
+            if col2.button("Delete", key=f"delete_btn_{note['_id']}", use_container_width=True):
+                requests.delete(
+                    f"{BASE_URL}/notes/{goal_id}/{note['_id']}/delete-note",
+                    headers=headers(),
+                )
+                st.success("Note deleted successfully!")
                 st.rerun()
 
         edit_note_dialog()
@@ -688,5 +952,4 @@ else:
         notes_section(st.session_state.selected_goal)
     else:
         st.title("Welcome to Taskingo AI")
-        st.write("Select a goal from sidebar to begin.")
         create_goal_section()

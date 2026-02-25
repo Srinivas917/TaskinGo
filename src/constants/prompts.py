@@ -35,19 +35,23 @@ TASK_RELEVANCE_GATE_NODE_PROMPT = """
 
 You are a logic gate. Your goal is to compare the provided Goal against a list of Tasks. 
 
+Handle Missing Data: "If a task has no description, evaluate relevance based strictly on the Title. Do not claim a description 'does not specify' a link if the description field is empty; instead, state that the Title alone is sufficient or insufficient for the Goal."
+Contextual Logic: "Consider inherent relevance. For example, 'Physical conditioning' is inherently relevant to 'Professional Football' even without a detailed description."
+
 [INPUT DATA]
 - Goal: {goal_title}
 - Description: {goal_description}
 - Task List: {all_tasks}
 
 [EVALUATION CRITERIA]
-1. RELEVANT: The task directly contributes to the completion of the Goal Title or Description.
+1. RELEVANT: The task directly contributes to the completion of the Goal Title or Description. If a description is missing, do not hallucinate its contents. Evaluate the Title's intent.
 2. IRRELEVANT: The task is out of scope, a generic placeholder, or unrelated to the specific Goal.
 
 [STRICT RULES]
 - DO NOT invent new tasks.
 - DO NOT use external knowledge. 
 - You must provide a "reasoning" for every single classification to ensure logical consistency.
+- **NO GHOST DESCRIPTIONS**: If a task description is empty or null, your reasoning must acknowledge this (e.g., "Based on Title alone..."). Do not state that the description 'fails to specify' something if it doesn't exist.
 
 Return JSON strictly matching the TaskRelevanceResponse schema.
 You MUST return ONLY valid JSON in EXACTLY this format:
@@ -64,7 +68,8 @@ example response:
     {{
       "title": "task title",
       "description": "task description",
-      "is_completed": true/false
+      "is_completed": true/false,
+      "reason": "Clear explanation why this task is irrelevant to the goal."
     }}
   ]
 }}
@@ -125,14 +130,14 @@ Evaluate the following metrics against the hierarchical rules below.
 
 [ANALYTIC METRICS]
 - Completion: {completion_score}%
-- Risk Score: {risk_score}/100
+- priority: {priority}
 - Days Left: {days_remaining}
 - Workload: {pending_count} pending, {completed_count} done
 
 [DECISION MATRIX - ORDER OF PRIORITY]
-1. IF (Risk Score >= 60) OR (Days Remaining < 3 AND Completion < 50):
+1. IF (priority == "High") OR (Days Remaining < 3 AND Completion < 50):
    OUTPUT: "critical_strategy"
-2. ELSE IF (Completion >= 80) AND (Risk Score <= 20) AND (Days Remaining >= 5):
+2. ELSE IF (Completion >= 80) AND (priority == "Low") AND (Days Remaining >= 5):
    OUTPUT: "optimization_strategy"
 3. ELSE:
    OUTPUT: "balanced_strategy"
@@ -160,7 +165,7 @@ Provide insights by cross-referencing the selected Strategy with the Task Data.
 - Current Strategy: {execution_strategy}
 - Task Data: {relevant_tasks}
 - Completion Score: {completion_score}
-- Risk Score: {risk_score}
+- priority: {priority}
 - Days Remaining: {days_remaining}
 - Pending Tasks: {pending_count}
 - Completed Tasks: {completed_count}
@@ -197,7 +202,7 @@ CRITICAL_STRATEGY_NODE_PROMPT = """
 ### ROLE: CRISIS INTERVENTION STRATEGIST
 ### TASK: HIGH-STAKES TASK TRIAGE
 
-The project is at a CRITICAL risk level ({risk_score}/100). You must generate a "Survival Plan" to prevent project failure.
+The project is at a CRITICAL risk level ({priority}). You must generate a "Survival Plan" to prevent project failure.
 
 [STRICT DATA ANCHORING]
 - Goal: {goal_title}
@@ -235,7 +240,7 @@ The project is in a STABLE state. Your goal is to maintain momentum and ensure a
 [STRATEGY PARAMETERS]
 1. FLOW OPTIMIZATION: Organize the pending tasks into a logical sequence that prevents burnout.
 2. MILESTONE FOCUS: Identify the next 25% progress milestone based on the current list.
-3. EXECUTION STRATEGY: Provide instructions on maintaining the current cadence while monitoring the {risk_score} to ensure it doesn't rise.
+3. EXECUTION STRATEGY: Provide instructions on maintaining the current cadence while monitoring the {priority} to ensure it doesn't rise.
 
 [SAY NO TO HALLUCINATION]
 - Do not introduce urgency where none exists.

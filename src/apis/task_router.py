@@ -62,7 +62,8 @@ def get_tasks(goal_id: int, current_user: User = Depends(get_current_user)):
                 "title": task.title,
                 "description": task.description,
                 "priority": task.priority,
-                "goal_id": task.goal_id
+                "goal_id": task.goal_id,
+                "is_completed": task.is_completed,
             })
         return {"message":"Tasks fetched successfully", 
                 "tasks":task_list, 
@@ -99,6 +100,7 @@ def get_task(task_id: int, goal_id: int, current_user: User = Depends(get_curren
                     "title": task.title,
                     "description": task.description,
                     "priority": task.priority,  
+                    "is_completed": task.is_completed,
                 }
                 }
     except HTTPException:

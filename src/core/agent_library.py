@@ -152,12 +152,19 @@ def analytics_node(state: GoalState):
             elif days_remaining < 7:
                 risk_score += 20
 
+        if risk_score >= 70:
+            priority = "High"
+        elif risk_score >= 40:
+            priority = "Medium"
+        else:
+            priority = "Low"
+
         logger.info(f"analytics_node executed successfully")
         return {
             "completed_tasks": len(completed),
             "pending_tasks": len(pending),
             "completion_score": completion_score,
-            "risk_score": risk_score,
+            "priority": priority,
             "days_remaining": days_remaining
         }
     except Exception as e:
@@ -167,14 +174,14 @@ def analytics_node(state: GoalState):
 def route_strategy_node(state: GoalState):
     try:
         completion_score = state["completion_score"]
-        risk_score = state["risk_score"]
+        priority = state["priority"]
         days_remaining = state["days_remaining"]
         pending_count = state["pending_tasks"]
         completed_count = state["completed_tasks"]
 
         prompt = ROUTE_STRATEGY_NODE_PROMPT.format(
             completion_score=completion_score,
-            risk_score=risk_score,
+            priority=priority,
             days_remaining=days_remaining,
             pending_count=pending_count,
             completed_count=completed_count
@@ -206,9 +213,9 @@ def critical_strategy_node(state: GoalState):
         """
         for i, task in enumerate(tasks)
         ])
-        risk_score = state["risk_score"]
+        priority = state["priority"]
 
-        prompt = CRITICAL_STRATEGY_NODE_PROMPT.format(goal_title=goal_title, goal_description=goal_description, all_tasks=all_tasks, risk_score=risk_score)
+        prompt = CRITICAL_STRATEGY_NODE_PROMPT.format(goal_title=goal_title, goal_description=goal_description, all_tasks=all_tasks, priority=priority)
         parsed = call_llm_with_validation(
             prompt,
             StrategyResponse
@@ -251,7 +258,7 @@ def balanced_strategy_node(state: GoalState):
         goal_description = state["goal_data"]["description"]
         tasks = state["relevant_tasks"]
         completion_score = state["completion_score"]
-        risk_score = state["risk_score"]
+        priority = state["priority"]
         all_tasks = '\n'.join([
         f"""
         Task {i+1}: {task['title']}. Description: {task.get('description', 'N/A')}. Completed: {task.get('is_completed', False)}
@@ -259,7 +266,7 @@ def balanced_strategy_node(state: GoalState):
         for i, task in enumerate(tasks)
         ])
 
-        prompt = BALANCED_STRATEGY_NODE_PROMPT.format(goal_title=goal_title, goal_description=goal_description, all_tasks=all_tasks, risk_score=risk_score)
+        prompt = BALANCED_STRATEGY_NODE_PROMPT.format(goal_title=goal_title, goal_description=goal_description, all_tasks=all_tasks, priority=priority)
         parsed = call_llm_with_validation(
             prompt,
             StrategyResponse
@@ -288,7 +295,7 @@ def insight_node(state: GoalState):
         goal_description=goal_description, 
         relevant_tasks=all_tasks,
         completion_score=state["completion_score"],
-        risk_score=state["risk_score"],
+        priority=state["priority"],
         days_remaining=state["days_remaining"],
         pending_count=state["pending_tasks"],
         completed_count=state["completed_tasks"],
@@ -312,7 +319,7 @@ def observation_tool_node(state: GoalState):
         observations = {}
 
         completion = state.get("completion_score", 0)
-        risk = state.get("risk_score", 0)
+        priority = state.get("priority", "Low")
         relevant_count = len(state.get("relevant_tasks", []))
         irrelevant_count = len(state.get("irrelevant_tasks", []))
         deadline = state.get("days_remaining")
@@ -328,12 +335,12 @@ def observation_tool_node(state: GoalState):
             observations["progress_status"] = "Strong progress observed."
 
         # Risk observation
-        if risk > 70:
-            observations["risk_level"] = "High execution risk."
-        elif risk > 40:
-            observations["risk_level"] = "Moderate execution risk."
+        if priority == "High":
+            observations["risk_level"] = "Take Immediate Action."
+        elif priority == "Medium":
+            observations["risk_level"] = "Take Action Soon."
         else:
-            observations["risk_level"] = "Low execution risk."
+            observations["risk_level"] = "You are on track."
 
         # Task quality observation
         if relevant_count == 0:
@@ -380,7 +387,7 @@ def answer_formatter_node(state: GoalState):
                 "goal_id": state["goal_id"],
                 "goal": state["goal_data"]["title"],
                 "completion_score": state["completion_score"],
-                "risk_score": state["risk_score"],
+                "priority": state["priority"],
                 "days_remaining": state["days_remaining"],
                 "execution_strategy": state["execution_strategy"],
                 "strategy_plan": state["strategy_plan"],
