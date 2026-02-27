@@ -66,7 +66,9 @@ def get_goals(current_user: User = Depends(get_current_user)):
                 "goal_id": goal.id,
                 "title": goal.title,
                 "description": goal.description,
-                "priority": goal.priority
+                "category": goal.category,
+                "priority": goal.priority,
+                "deadline":goal.deadline
             })
         return {"message":"Goals fetched successfully", 
                 "goals":goal_list, 
@@ -98,7 +100,9 @@ def get_goal(goal_id: int, current_user: User = Depends(get_current_user)):
                 "goal_id": goal.id,
                 "title": goal.title,
                 "description": goal.description,
-                "priority": goal.priority
+                "category": goal.category,
+                "priority": goal.priority,
+                "deadline":goal.deadline
             }, 
                 }
     except HTTPException:
@@ -127,8 +131,12 @@ def update_goal(request: GoalUpdateRequest, current_user: User = Depends(get_cur
             goal.title = request.title
         if request.description:
             goal.description = request.description
+        if request.category:
+            goal.category = request.category
         if request.priority:
             goal.priority = request.priority
+        if request.deadline:
+            goal.deadline = request.deadline
         db.commit()
         db.refresh(goal)
         return {"message":"Goal updated successfully", 
@@ -136,7 +144,9 @@ def update_goal(request: GoalUpdateRequest, current_user: User = Depends(get_cur
                 "goal_id": goal.id,
                 "title": goal.title,
                 "description": goal.description,
-                "priority": goal.priority
+                "category":goal.category,
+                "priority": goal.priority,
+                "deadline": goal.deadline
             }, 
                 }
     except HTTPException:

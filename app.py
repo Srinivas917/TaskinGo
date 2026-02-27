@@ -2,6 +2,7 @@ import streamlit as st
 from streamlit_cookies_manager import EncryptedCookieManager
 import html
 import requests
+from datetime import datetime
 from src.constants.properties import COOKIE_SECRET_KEY
 
 BASE_URL = "http://localhost:9000"
@@ -140,6 +141,82 @@ def auth_page():
             else:
                 st.error(res.json().get("detail", "Registration failed"))
 
+@st.dialog("Update Goal", width="medium")
+def edit_goal_dialog():
+    goal = st.session_state.get("goal_to_edit")
+    existing_deadline = goal.get("deadline")
+
+    if existing_deadline:
+        try:
+            existing_deadline = datetime.fromisoformat(existing_deadline).date()
+        except:
+            existing_deadline = None
+    else:
+        existing_deadline = None
+
+    updated_title = st.text_input(
+        "Title",
+        value=goal.get("title", "")
+    )
+
+    updated_description = st.text_area(
+        "Description",
+        value=goal.get("description", "")
+    )
+
+    updated_category = st.text_input(
+        "Category",
+        value=goal.get("category","")
+    )
+
+    priority_options = ["High", "Medium", "Low"]
+
+    current_priority = goal.get("priority")
+
+    if current_priority in priority_options:
+        default_index = priority_options.index(current_priority)
+    else:
+        default_index = 1  # fallback to Medium
+
+    updated_priority = st.selectbox(
+        "Priority",
+        priority_options,
+        index=default_index
+    )
+
+    updated_deadline = st.date_input(
+        "Deadline",
+        value=existing_deadline
+    )
+    
+    col1, col2 = st.columns(2)
+    if col1.button("Save Changes", use_container_width=True):
+        deadline_str = updated_deadline.isoformat() if updated_deadline else None
+
+        res = requests.put(
+            f"{BASE_URL}/goal/update-goal",
+            json={
+                "goal_id": goal["goal_id"],
+                "title": updated_title,
+                "description": updated_description,
+                "category": updated_category,
+                "priority": updated_priority,
+                "deadline": deadline_str
+            },
+            headers=headers(),
+        )
+
+        if res.status_code == 200:
+            st.success("Goal updated successfully")
+        else:
+            st.error("Update failed")
+
+        st.session_state.goal_to_edit = None
+        st.rerun()
+
+    if col2.button("Cancel", use_container_width=True):
+        st.session_state.goal_to_edit = None
+        st.rerun()
 def fetch_user_profile():
     try:
         res = requests.get(
@@ -157,7 +234,7 @@ def create_goal_section():
 
     title = st.text_input("Goal Title", key="goal_title")
     description = st.text_area("Goal Description", key="goal_desc")
-
+    category = st.text_input("Goal Category", key="goal_cat")
     priority = st.selectbox(
         "Priority",
         ["High", "Medium", "Low"],
@@ -177,6 +254,7 @@ def create_goal_section():
             json={
                 "title": title,
                 "description": description,
+                "category": category,
                 "priority": priority,
                 "deadline": deadline_str,
             },
@@ -248,7 +326,7 @@ def sidebar():
                 st.session_state.goal_menu_open = None
                 st.rerun()
 
-            # UNCOMPLETE
+            # INCOMPLETE
             if st.sidebar.button("Incomplete", key=f"goal_Incomplete_{goal_id}"):
                 requests.patch(
                     f"{BASE_URL}/goal/{goal_id}/uncomplete-goal",
@@ -326,52 +404,6 @@ def sidebar():
 
         # reset flag immediately
         st.session_state.open_goal_dialog = False
-
-        @st.dialog("Update Goal", width="medium")
-        def edit_goal_dialog():
-
-            updated_title = st.text_input(
-                "Title",
-                value=goal.get("title", "")
-            )
-
-            updated_description = st.text_area(
-                "Description",
-                value=goal.get("description", "")
-            )
-
-            updated_priority = st.selectbox(
-                "Priority",
-                ["High", "Medium", "Low"],
-                index=["High", "Medium", "Low"].index(goal.get("priority", "Medium"))
-            )
-
-            col1, col2 = st.columns(2)
-
-            if col1.button("Save Changes", use_container_width=True):
-                res = requests.put(
-                    f"{BASE_URL}/goal/update-goal",
-                    json={
-                        "goal_id": goal["goal_id"],
-                        "title": updated_title,
-                        "description": updated_description,
-                        "priority": updated_priority,
-                    },
-                    headers=headers(),
-                )
-
-                if res.status_code == 200:
-                    st.success("Goal updated successfully")
-                else:
-                    st.error("Update failed")
-
-                st.session_state.goal_to_edit = None
-                st.rerun()
-
-            if col2.button("Cancel", use_container_width=True):
-                st.session_state.goal_to_edit = None
-                st.rerun()
-
         edit_goal_dialog()
 
 
