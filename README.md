@@ -130,7 +130,6 @@ The UI will open automatically at `http://localhost:8501`
 # Clone the repository
 git clone https://github.com/Srinivas917/TaskinGo.git
 cd TaskinGo
-git checkout dev
 
 # Create and activate a virtual environment
 python -m venv venv
