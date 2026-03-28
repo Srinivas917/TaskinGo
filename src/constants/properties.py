@@ -1,0 +1,25 @@
+import os
+from dotenv import load_dotenv
+load_dotenv()
+
+DATABASE_URL = os.getenv("DATABASE_URL")
+
+MONGODB_URL = os.getenv("MONGODB_URL")
+ACCESS_TOKEN_SECRET_KEY = os.getenv("SECRET_KEY")
+REFRESH_TOKEN_SECRET_KEY = os.getenv("REFRESH_TOKEN_SECRET_KEY")
+ACCESS_TOKEN_ALGORITHM = os.getenv("ALGORITHM")
+REFRESH_TOKEN_ALGORITHM = os.getenv("ALGORITHM")
+ACCESS_TOKEN_EXPIRE_MINUTES = 60 * 6
+REFRESH_TOKEN_EXPIRE_MINUTES = 60 * 6
+
+COOKIE_SECRET_KEY = os.getenv("COOKIE_SECRET_KEY")
+
+GROQ_API_KEY = os.getenv("GROQ_API_KEY")
+
+LLM_MODEL_NAME = "llama-3.3-70b-versatile"
+
+SMTP_HOST=os.getenv("SMTP_HOST")
+SMTP_PORT=os.getenv("SMTP_PORT")
+SMTP_USER=os.getenv("SMTP_USER")
+SMTP_PASSWORD=os.getenv("SMTP_PASSWORD")
+FROM_EMAIL=os.getenv("FROM_EMAIL")
